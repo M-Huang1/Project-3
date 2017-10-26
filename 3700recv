@@ -35,7 +35,7 @@ sock.settimeout(TIMEOUT)
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
-int wrapSeq(){
+def wrapSeq():
   global SEQUENCE
   SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
 
@@ -51,7 +51,7 @@ while True:
       decoded = json.loads(data)
 
       # If the EOF flag is set, exit
-      if (decoded['eof']) and decoded['sequence'] = Sequence:
+      if (decoded['eof']) and decoded['sequence'] == Sequence:
         log("[completed]")
         sys.exit(0)
 
@@ -60,26 +60,31 @@ while True:
         # If we receive data, we assume it's in-order
         # You will need to do much more here
         log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-        if decoded['sequence'] == SEQ and DUPACKS = False:
+        if decoded['sequence'] == SEQ and DUPACKS == False:
           SEQ += len(decoded['data'])
           # Send back an ack to the sender
-          msg = json.dumps({"ack": SEQ, "sack":None, )})
+          msg = json.dumps({"ack": SEQ, "sack":None})
           wrapSeq()
           sys.stdout.write(decoded['data'])
-        elif decoded['sequence'] == SEQ and DUPACKS = True:
+        elif decoded['sequence'] == SEQ and DUPACKS == True:
           for a,b in SACKS:
-            if a == decoded['sequence'] + len(decoded['data']):
-              SACKS.remove(SACKS.index((a,b))
+            if a == decoded['sequence']:
+              SACKS.remove(SACKS.index((a,b)))
               if len(SACKS) == 0:
                 DUPACKS = false
                 SEQ = b
+                wrapSeq()
+                msg = json.dumps({"ack":SEQ,"sack":None})
               else:
-                SEQ = b                  
+                SEQ = b
+                msg = json.dumps({"ack":SEQ,"sack":SACKS})                  
               break
 
-        elif DUPACKS = false:
+        elif decoded['sequence'] != SEQ and DUPACKS == false:
           DUPACKS = True
           SACKS.add(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
+          msg = json.dumps({"ack":SEQ,"sack":SACKS})                  
+              
         else:
           DroppedMessage = True
           #Adds the message to the range of Acked data
@@ -89,7 +94,8 @@ while True:
               DroppedMessage = False
           #If another message is dropped
           if DroppedMessage:
-            SACKS.add(decoded['sequence'], decoded['sequence'] + len(decoded['data']))     
+            SACKS.add(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
+          msg = json.dumps({"ack":SEQ,"sack":SACKS})                           
       if sock.sendto(msg, addr) < len(msg):
         log("[error] unable to fully send packet")
 
