@@ -85,8 +85,8 @@ while True:
                 msg = json.dumps({"ack":SEQUENCE, "sack": None, "dupack": False})
                 SEQUENCE = b
             else:
+                msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})
                 SEQUENCE = b
-                msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})                  
                 break
 
         elif decoded['sequence'] != SEQUENCE and DUPACKS == False:
