@@ -18,8 +18,11 @@ TIMEOUT = 30
 SEQUENCE = 0
 #Sequence numbers which have been ACKed
 ACKEDSEQUENCE = 0
+#Count of current Missing Packet
+MISSINGPACKETCOUNT = 0
+#Packets that have been retransmitted
+RETRANSMITTED = []
 
-SACK=[]
 #Represents sent packets, entries are removed on ACK
 SENTPACKETS= {}
 # Bind to localhost and an ephemeral port
@@ -38,7 +41,7 @@ def log(string):
 def send_next_packet():
   global SEQUENCE 
   data = sys.stdin.read(DATA_SIZE)
-  if len(data) > 0:
+  if len(data)> 0:
     msg = json.dumps({"sequence": SEQUENCE, "data": data, "eof": False})
     
     if sock.sendto(msg, dest) < len(msg):
@@ -51,12 +54,27 @@ def send_next_packet():
   else:
     return False
 
-def retransmit(int sequence):
-  log("[resent data] " + str(sequence) + " (" + str(len(SENTPACKETS[sequence])) + ")")
+#Retransmit the packet if it hasn't already been retransmmited (I also made it retransmit again after 5 more DUP acks are found, but this should probably be changed)
+def retransmit(sequence):
+  global MISSINGPACKETCOUNT
+  global RETRANSMITTED
+  global SENTPACKETS
   remsg = SENTPACKETS[sequence]
-  if sock.sendto(remsg, dest) < len(remsg):
-    log ("[error] unable to fully resend packet")
-      
+  MISSINGPACKETCOUNT += 1
+  if resmsg in RETRANSMITTED and MISSINGPACKETCOUNT >= 5:
+    RETRANSMITTED.remove(remsg)
+    MISSINGPACKETCOUNT = 0
+  #Retransmits on first instance of missing packet
+  if MISSPACKETCOUNT == 1:
+    log("[resent data] " + str(sequence) + " (" + str(len(SENTPACKETS[sequence])) + ")")
+  
+    if sock.sendto(remsg, dest) < len(remsg):
+      log ("[error] unable to fully resend packet")
+      MSSINGPACKET -= 1 
+      retransmit(sequence)
+      return
+    RETRANSMITTED.append(remsg)
+    
 # Send first packet
 send_next_packet()
 # Now read in data, send packets
@@ -75,13 +93,19 @@ while True:
           savedmsg = SENTPACKETS[ACKEDSEQUENCE]
           del SENTPACKETS[ACKEDSEQUENCE]
           ACKEDSEQUENCE += len(savedmsg["data"])
-          send_next_packet()       
+          send_next_packet() 
+      #Meeting this conditional means that a lost packet was succesfully retransmitted 
+      elif decoded['sack'] != None and decoded['ack'] == ACKEDSEQUENCE:
+          remsg = SENTPACKETS[ACKEDSEQUENCE]
+          SENTPACKET.remove(remsg)
+          for a,b in decoded['sack']:
+            #If a message is sucessfully retransmitted, this function should move on to the next dropped message or the next packet to be sent if no other dropped message
+            if a == ACKEDSEQUENCE + len(remsg['data']):
+              ACKEDSEQUENCE = b
+              MISSINGPACKETCOUNT = 0
+              break
       else:
-          SACK = decoded['sack']
-          retransmit(decoded['ack'])
-          for 
-          
-        
+          retransmit(decoded['ack'])        
     except (ValueError, KeyError, TypeError):
       log("[recv corrupt packet]")
   else:
