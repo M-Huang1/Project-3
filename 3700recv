@@ -18,7 +18,7 @@ def log(string):
 MSG_SIZE = 1500
 TIMEOUT = 30
 SEQUENCE = 0
-
+WINDOW = 3
 MESSAGEQUE = Queue.Queue()
 DUPACKS = False
 SACKS = []
@@ -50,7 +50,9 @@ def wrapseq():
   SEQUENCE = int(SEQUENCE)
 # Now listen for packets
 
+
 while True:
+  
   log("Current Recv Sequence is: " + str(SEQUENCE))
   result = sock.recvfrom(MSG_SIZE)
   MESSAGEQUE.put(result)
@@ -58,6 +60,7 @@ while True:
   if not MESSAGEQUE.empty():
     (data, addr) = MESSAGEQUE.get()  
     try:
+      WINDOW += 1
       decoded = json.loads(data)
       RECIEVEDMESSAGES[decoded['sequence']] = decoded['data']
       
@@ -79,14 +82,15 @@ while True:
           log("[recv retransmitted data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
           for a,b in SACKS:
             if a == decoded['sequence'] + len(decoded['data']):
-              SACKS.remove((a,b))
-              if len(SACKS) == 0:
+              if len(SACKS) == 1:
                 DUPACKS = False
-                msg = json.dumps({"ack":SEQUENCE, "sack": None, "dupack": False})
+                msg = json.dumps({"ack":SEQUENCE, "sack": SACKS, "dupack": False})
                 SEQUENCE = b
+                SACKS.remove((a,b))
             else:
-                msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})
+                msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})                  
                 SEQUENCE = b
+                SACKS.remove((a,b))
                 break
 
         elif decoded['sequence'] != SEQUENCE and DUPACKS == False:
@@ -113,7 +117,7 @@ while True:
       while sock.sendto(msg, addr) < len(msg):
         log("[error] unable to fully send packet")
           
-
+    
     except (ValueError, KeyError, TypeError) as e:
       log(str(sys.exc_info()[-1].tb_lineno))
       log("[recv corrupt packet]")
