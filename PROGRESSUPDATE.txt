@@ -1,0 +1,20 @@
+Implmentation details:
+
+SACK Based
+
+Right now the send has a set window of 3. It sends a JSON message with Sequence number, eof boolean, Data. The reciever takes the messages and ACKS each sequence number in order,
+and sends the Data to a dictionary which is used run in a function while loop so that any missing sequence will halt the sending of the data into STDIN. The reciever sends the
+sender the ack, the SACK if theres a droppedpacket and a boolean dupack which states whether this ACK message is a DUPACK. When the sender recieves a message with a SACK and
+DUPACK == True, it will retransmit a message once (you may have to change this for the cases where a retransmit is also dropped) for the set of DUPACKS for that ACK. 
+All the implementation details are in the 3700recv and 3700sendv2 (you should probably just use 3700sendv2 as your 3700send, but I didn't want to write over the ASYNCORE code). 
+
+How to run stuff:
+Right now my code SHOULD pass any file transfers with no drops/dups/corrupted packets, although the time it takes isnt great since it has a set window size.
+I'm using a small window size to test dropped files recovery, which you can test by running /course/cs3700f17/bin/project3/netsim --drop 10 (sets the drop rate of files
+to 10%) and then just running ./run --medium --live on the project file in your own directory. All the dropped packets, reordered packets settings are in the
+project 3 page so play around with the numbers once you start implementing stuff. 
+
+Current State:
+Right now its successfully recovering dropped packets,but it doesn't reach the end of sending the files due to a bug that I haven't found yet. I'll work on it once I wake up,
+but I should be leaving around 5pm on Friday(today) for my trip. So you can message me if anything happens, I'll probably be awake for like 2 or 3 hours before I 
+leave.  
