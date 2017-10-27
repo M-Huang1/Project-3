@@ -11,17 +11,18 @@ import datetime
 import select
 import json
 import math
-
+import Queue
 def log(string):
   sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
 MSG_SIZE = 1500
 TIMEOUT = 30
-SEQ = 0
+SEQUENCE = 0
 
+MESSAGEQUE = Queue.Queue()
 DUPACKS = False
 SACKS = []
-
+RECIEVEDMESSAGES = {}
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
@@ -35,71 +36,86 @@ sock.settimeout(TIMEOUT)
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
-def wrapSeq():
+def writeMessagesToOut():
+  global SEQUENCE
+  global RECIEVEDMESSAGES
+  while SEQUENCE in RECIEVEDMESSAGES:
+    sys.stdout.write(RECIEVEDMESSAGES[SEQUENCE])
+    SEQUENCE += len(RECIEVEDMESSAGES[SEQUENCE])
+  
+
+def wrapseq():
   global SEQUENCE
   SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
-
+  SEQUENCE = int(SEQUENCE)
 # Now listen for packets
+
 while True:
+  log("Current Recv Sequence is: " + str(SEQUENCE))
   result = sock.recvfrom(MSG_SIZE)
-
+  MESSAGEQUE.put(result)
   # If nothing is ready, we hit the timeout
-  if result:
-    (data, addr) = result
-
+  if not MESSAGEQUE.empty():
+    (data, addr) = MESSAGEQUE.get()  
     try:
       decoded = json.loads(data)
-
+      RECIEVEDMESSAGES[decoded['sequence']] = decoded['data']
+      
       # If the EOF flag is set, exit
-      if (decoded['eof']) and decoded['sequence'] == Sequence:
+      if decoded['eof'] and decoded['sequence'] == SEQUENCE:
         log("[completed]")
         sys.exit(0)
 
       # If there is data, we accept it and print it out
       if (decoded['data']):
+      
         # If we receive data, we assume it's in-order
         # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-        if decoded['sequence'] == SEQ and DUPACKS == False:
-          SEQ += len(decoded['data'])
-          # Send back an ack to the sender
-          msg = json.dumps({"ack": SEQ, "sack":None})
-          wrapSeq()
-          sys.stdout.write(decoded['data'])
-        elif decoded['sequence'] == SEQ and DUPACKS == True:
+        if decoded['sequence'] == SEQUENCE and DUPACKS == False:
+          log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
+           # Send back an ack to the sender
+          msg = json.dumps({"ack": SEQUENCE, "sack":None, "dupack": False})
+        elif decoded['sequence'] == SEQUENCE and DUPACKS == True:
+          log("[recv retransmitted data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ")")
           for a,b in SACKS:
-            if a == decoded['sequence']:
-              SACKS.remove(SACKS.index((a,b)))
+            if a == decoded['sequence'] + len(decoded['data']):
+              SACKS.remove((a,b))
               if len(SACKS) == 0:
-                DUPACKS = false
-                SEQ = b
-                wrapSeq()
-                msg = json.dumps({"ack":SEQ,"sack":None})
-              else:
-                SEQ = b
-                msg = json.dumps({"ack":SEQ,"sack":SACKS})                  
-              break
+                DUPACKS = False
+                msg = json.dumps({"ack":SEQUENCE, "sack": None, "dupack": False})
+                SEQUENCE = b
+            else:
+                SEQUENCE = b
+                msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})                  
+                break
 
-        elif decoded['sequence'] != SEQ and DUPACKS == false:
+        elif decoded['sequence'] != SEQUENCE and DUPACKS == False:
+          log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (not-in-order)")
+ 
           DUPACKS = True
-          SACKS.add(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
-          msg = json.dumps({"ack":SEQ,"sack":SACKS})                  
-              
+          SACKS.append((decoded['sequence'], decoded['sequence'] + len(decoded['data'])))
+          msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True})                 
+    
         else:
+          log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (not-in-order)")
           DroppedMessage = True
-          #Adds the message to the range of Acked data
+          #Adds the message to the range of Sacked data (IE merging packet 3000-4000 with a sack of 2000-3000 to become 2000-4000)
           for a,b in SACKS:
-           if seq == b:
-              SACKS[SACKS.indexof((a,b))] = (a, b + len(decoded['data']))
+           if decoded['sequence']  == b:
+              SACKS[SACKS.index((a,b))] = (a, b + len(decoded['data']))
               DroppedMessage = False
-          #If another message is dropped
+          #If another message is dropped, then another SACK range has to be added
           if DroppedMessage:
-            SACKS.add(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
-          msg = json.dumps({"ack":SEQ,"sack":SACKS})                           
-      if sock.sendto(msg, addr) < len(msg):
+            SACKS.append(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
+          msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True}) 
+      writeMessagesToOut()     
+      log("[sent ack] ack:" + str(json.loads(msg)['ack']) + " sack: " + str(json.loads(msg)['sack']) + " dupack: " + str(json.loads(msg)['dupack']))           
+      while sock.sendto(msg, addr) < len(msg):
         log("[error] unable to fully send packet")
+          
 
     except (ValueError, KeyError, TypeError) as e:
+      log(str(sys.exc_info()[-1].tb_lineno))
       log("[recv corrupt packet]")
       raise e
   else:
