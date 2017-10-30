@@ -23,7 +23,7 @@ RETRANSMITTED = []
 #Represents sent packets, entries are removed on ACK
 SENTPACKETS= {}
 #Window
-WINDOW = 3
+WINDOW = 5
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
 UDP_IP = IP_PORT[0:IP_PORT.find(":")]
