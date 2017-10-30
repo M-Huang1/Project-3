@@ -75,12 +75,23 @@ def endtransmission():
   global SEQUENCE
   global ACKEDSEQUENCE
   if ACKEDSEQUENCE == SEQUENCE:
-  
+     
     sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE}), dest)
     log("[send eof] Sequence: " + str(SEQUENCE))
+    
+    # Wait for eof ACK
+    while True:
+        result = sock.recvfrom(MSG_SIZE)
+        if result:
+
+        else:
+            break;
     sys.exit(0) 
   else:
     return False
+    
+  # Failed to get ACK for the eof, so try again
+  endTransmission();
 
 while WINDOW > 0:
   if not send_next_packet():
