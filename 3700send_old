@@ -1,0 +1,165 @@
+#!/usr/bin/python -u
+#
+# CS3700, Spring 2015
+# Project 2 Starter Code
+#
+
+import sys
+import socket
+import time
+import datetime
+import select
+import json
+import asyncore
+
+MSG_SIZE = 1500
+DATA_SIZE = 1000
+TIMEOUT = 30
+SEQUENCE = 0
+
+# Dictionary of sequence # to {PACKET: string, SACKED: boolean}
+# where SACKED is True if the packet has been SACKed
+buffered_packets = []
+PACKET = 'packet'
+SACKED = 'acked'
+
+# Bind to localhost and an ephemeral port
+IP_PORT = sys.argv[1]
+UDP_IP = IP_PORT[0:IP_PORT.find(":")]
+UDP_PORT = int(IP_PORT[IP_PORT.find(":")+1:])
+dest = (UDP_IP, UDP_PORT)
+
+def log(string):
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+
+
+class Sender(asyncore.dispatcher):
+  def __init__():      
+    # Set up the socket
+    self.create_socket(socket.AF_INET, socket.SOCK_DGRAM) 
+    sock.settimeout(TIMEOUT)
+  
+  
+def send_next_packet():
+  global SEQUENCE, sent_packets, PACKET, ACKED
+  data = sys.stdin.read(DATA_SIZE)
+  current_sequence = SEQUENCE 
+  if (len(data) > 0):
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    SEQUENCE += len(data)
+
+    if sock.sendto(msg, dest) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+        
+      # Enter the unSACKed packet in the dictionary
+      SENT_PACKETS[SEQUENCE] = {PACKET: msg, SACKED: False}
+    return True
+  else:
+    return False
+   
+
+def send_next_packet():
+  global SEQUENCE, sent_packets, PACKET, ACKED
+  data = sys.stdin.read(DATA_SIZE)
+  current_sequence = SEQUENCE 
+  if (len(data) > 0):
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    SEQUENCE += len(data)
+
+    if sock.sendto(msg, dest) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+        
+      # Enter the unSACKed packet in the dictionary
+      SENT_PACKETS[SEQUENCE] = {PACKET: msg, SACKED: False}
+    return True
+  else:
+    return False
+
+def send_next_packet():
+  global SEQUENCE, sent_packets, PACKET, ACKED
+  data = sys.stdin.read(DATA_SIZE)
+  current_sequence = SEQUENCE 
+  if (len(data) > 0):
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    SEQUENCE += len(data)
+
+    if sock.sendto(msg, dest) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+        
+      # Enter the unSACKed packet in the dictionary
+      SENT_PACKETS[SEQUENCE] = {PACKET: msg, SACKED: False}
+    return True
+  else:
+    return False
+
+
+def send_next_packet():
+  global SEQUENCE, sent_packets, PACKET, ACKED
+  data = sys.stdin.read(DATA_SIZE)
+  current_sequence = SEQUENCE 
+  if (len(data) > 0):
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    SEQUENCE += len(data)
+
+    if sock.sendto(msg, dest) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+        
+      # Enter the unSACKed packet in the dictionary
+      SENT_PACKETS[SEQUENCE] = {PACKET: msg, SACKED: False}
+    return True
+  else:
+    return False
+def send_next_packet():
+  global SEQUENCE, sent_packets, PACKET, ACKED
+  data = sys.stdin.read(DATA_SIZE)
+  current_sequence = SEQUENCE 
+  if (len(data) > 0):
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    SEQUENCE += len(data)
+
+    if sock.sendto(msg, dest) < len(msg):
+      log("[error] unable to fully send packet")
+    else:
+      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+        
+      # Enter the unSACKed packet in the dictionary
+      SENT_PACKETS[SEQUENCE] = {PACKET: msg, SACKED: False}
+    return True
+  else:
+    return False
+# Send first packet
+send_next_packet()
+
+# Now read in data, send packets
+while True:
+  log("ABOUT TO SLEEP")
+  result = sock.recvfrom(MSG_SIZE)
+
+  if result:
+    (data, addr) = result
+    try:
+      decoded = json.loads(data)
+
+      # If there is an ack, send next packet
+      if decoded['ack'] == SEQUENCE:
+        log("[recv ack] " + str(SEQUENCE))
+
+        # Try to send next packet; break if no more data
+        if (not send_next_packet()):
+          break
+    except (ValueError, KeyError, TypeError):
+      log("[recv corrupt packet]")
+  else:
+    log("[error] timeout")
+    sys.exit(-1)
+
+sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+sys.exit(0)
