@@ -67,6 +67,8 @@ while True:
       # If the EOF flag is set, exit
       if decoded['eof'] and decoded['sequence'] == SEQUENCE:
         log("[completed]")
+        msg = json.dumps({'eof':True})
+        sock.sendto(msg, addr)
         sys.exit(0)
 
       # If there is data, we accept it and print it out
@@ -110,7 +112,7 @@ while True:
               DroppedMessage = False
           #If another message is dropped, then another SACK range has to be added
           if DroppedMessage:
-            SACKS.append(decoded['sequence'], decoded['sequence'] + len(decoded['data']))
+            SACKS.append((decoded['sequence'], decoded['sequence'] + len(decoded['data'])))
           msg = json.dumps({"ack":SEQUENCE,"sack":SACKS, "dupack": True}) 
       writeMessagesToOut()     
       log("[sent ack] ack:" + str(json.loads(msg)['ack']) + " sack: " + str(json.loads(msg)['sack']) + " dupack: " + str(json.loads(msg)['dupack']))           
@@ -120,6 +122,7 @@ while True:
     
     except (ValueError, KeyError, TypeError) as e:
       log(str(sys.exc_info()[-1].tb_lineno))
+      log(str(e))
       log("[recv corrupt packet]")
       raise e
   else:

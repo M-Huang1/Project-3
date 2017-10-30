@@ -81,12 +81,15 @@ def endtransmission():
     
     # Wait for eof ACK
     while True:
-        result = sock.recvfrom(MSG_SIZE)
-        if result:
-
-        else:
-            break;
-    sys.exit(0) 
+      result = sock.recvfrom(MSG_SIZE)
+      if result:
+        (data, addr) = result
+        decoded = json.loads(data)
+        if decoded['eof']:
+          # Received eof from receiver, so exit
+          sys.exit()
+      else:
+        break;
   else:
     return False
     
@@ -107,7 +110,7 @@ while True:
     try:
       WINDOW += 1
       decoded = json.loads(data)
-      log("[recv data] ack:" + str(decoded["ack"]) + " sack: " + str(decoded['sack']) + " dupack: " + str(decoded['dupack']))
+      log("[recv ack]:" + str(decoded["ack"]) + " sack: " + str(decoded['sack']) + " dupack: " + str(decoded['dupack']))
       if decoded['sack'] == None and decoded['dupack'] == False :
         # If there is an ack, send next packet
         if decoded['ack'] == ACKEDSEQUENCE:
@@ -134,9 +137,10 @@ while True:
           for a,b in decoded['sack']:
             if ACKEDSEQUENCE > a and ACKEDSEQUENCE < b:
               ACKEDSEQUENCE = b              
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError) as e:
       log(str(sys.exc_info()[0]))
-      log("[recv corrupt packet]")
+      log("[recv corrupt packet]") 
+      log(str(e))
   else:
     log("[error] timeout")
     sys.exit(-1)
