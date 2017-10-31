@@ -1,0 +1,84 @@
+#!/usr/bin/python -u
+#
+# CS3700, Spring 2017
+#
+
+import sys
+import socket
+import time
+import datetime
+import select
+import json
+import math
+import Queue
+
+MSG_SIZE = 1500
+TIMEOUT = 30
+SEQUENCE = 0
+WINDOW = 3
+MESSAGEQUE = Queue.Queue()
+DUPACKS = False
+SACKS = []
+RECIEVEDMESSAGES = {}
+# Bind to localhost and an ephemeral port
+UDP_IP = "127.0.0.1"
+UDP_PORT = 0
+dest = (UDP_IP, UDP_PORT)
+
+largest_acceptable_frame = 0
+last_frame_received = 0
+next_frame_expected = 0
+
+out_of_order_packets = {}
+
+# Keys
+SEQUENCE_KEY = "sequence"
+DATA_KEY = "data"
+EOF_KEY = "eof"
+ACK_KEY = "ack"
+
+# Set up the socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(dest)
+sock.settimeout(TIMEOUT)
+
+# Get port we bound to
+UDP_PORT = sock.getsockname()[1]
+log("[bound] " + str(UDP_PORT))
+
+def log(string):
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+
+
+def writeOut():
+  global SEQUENCE
+  global RECIEVEDMESSAGES
+  while SEQUENCE in RECIEVEDMESSAGES:
+    sys.stdout.write(RECIEVEDMESSAGES[SEQUENCE])
+    SEQUENCE += len(RECIEVEDMESSAGES[SEQUENCE])
+
+# Return deserialized data from the socket
+def getJSON():
+  global MSG_SIZE
+  result = sock.recvfrom(MSG_SIZE)
+  if result:
+    return json.loads(result[0])
+
+
+def wrapseq():
+  global SEQUENCE
+  SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
+  SEQUENCE = int(SEQUENCE)
+
+
+def start():
+    while True:
+        log("Current Recv Sequence is: " + str(largest_acceptable_frame))
+        decoded = getJSON()
+
+        sequence = decoded[SEQUENCE_KEY]
+
+        if sequence > last_frame_received and sequence <= largest_acceptable_frame:
+
+
+start()
