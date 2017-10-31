@@ -9,11 +9,12 @@ import time
 import datetime
 import select
 import json
-import Queue
+
 MSG_SIZE = 1500
 DATA_SIZE = 1000
 TIMEOUT = 30
-RTO = 200
+RTO = 600
+
 
 # Retransmission queue
 retransmission_queue= {}
@@ -35,6 +36,8 @@ SEQUENCE_KEY = "sequence"
 DATA_KEY = "data"
 EOF_KEY = "eof"
 ACK_KEY = "ack"
+EOF_STATE_ONE = "0"
+EOF_STATE_TWO = "1"
 
 
 # Set up the socket
@@ -51,9 +54,12 @@ def current_time():
 # Read a JSON object from the socket and return it as a Python object
 def getJSON():
     global MSG_SIZE
-    result = sock.recvfrom(MSG_SIZE)
-    if result:
-        return json.loads(result[0])
+
+    read, ignore, ignore = select.select([sock], [], [], 0.1)
+    for s in read:
+        result = s.recvfrom(MSG_SIZE)
+        if result:
+            return json.loads(result[0])
 
 def send_next_packet():
     global SEQUENCE_KEY
@@ -86,30 +92,38 @@ def retransmit(sequence):
     # Get the packet to be resent
     remsg = retransmission_queue[sequence][0]
 
-    log("[resent data] " + str(sequence) + " (" + str(len(json.loads(SENTPACKETS[sequence])[DATA_KEY])) + ")")
+    log("[resent data] " + str(sequence - DATA_SIZE))
     if sock.sendto(remsg, dest) < len(remsg):
         log ("[error] unable to fully resend packet")
     else:
         # Restart retransmission timer
-        retransmission_queue[sequence][1] = current_time()
+        restartTimer(sequence)
+
+def restartTimer(sequence):
+    global retransmission_queue
+
+    temp = retransmission_queue[sequence]
+    retransmission_queue[sequence] = (temp[0], current_time())
 
 
 def endTransmission():
     global DATA_KEY
     global SEQUENCE_KEY
     global EOF_KEY
+    global EOF_STATE_ONE
+    global EOF_STATE_TWO
 
-    sock.sendto(json.dumps({EOF_KEY: True}), dest)
     log("[send eof]")
+    sock.sendto(json.dumps({EOF_KEY: EOF_STATE_ONE}), dest)
 
     # Wait for eof ACK
     while True:
         decoded = getJSON()
-        if decoded[EOF_KEY]:
+        if decoded and EOF_KEY in decoded:
             # Received eof from receiver, so ack and then exit
-            sock.sendto(json.dumps({EOF_KEY: True}), dest)
-            sock.sendto(json.dumps({EOF_KEY: True}), dest)
-            sock.sendto(json.dumps({EOF_KEY: True}), dest)
+            sock.sendto(json.dumps({EOF_KEY: EOF_STATE_TWO}), dest)
+            sock.sendto(json.dumps({EOF_KEY: EOF_STATE_TWO}), dest)
+            sock.sendto(json.dumps({EOF_KEY: EOF_STATE_TWO}), dest)
             log("[completed]")
             sys.exit()
         else:
@@ -125,7 +139,8 @@ def retransmission_check():
     global retransmission_queue
     global RTO
 
-    for (key, value) in enumerate(retransmission_queue.iteritems()):
+    # Retransmit the lowest entries first
+    for (key, value) in sorted(retransmission_queue.iteritems()):
         if value[1] < current_time() - RTO:
             retransmit(key)
 
@@ -136,11 +151,23 @@ def handle_ack(decoded):
     global last_ack_received
 
     ack = decoded[ACK_KEY]
-
-    log(str(decoded))
+    log("[recv ack] " + str(ack))
     if ack > last_ack_received and ack <= last_frame_sent:
         last_ack_received = ack
-        del retransmission_queue[last_ack_received]
+
+        # Remove all entries <= last_ack_received from the queue
+        cumulative_ack(last_ack_received)
+
+def cumulative_ack(ack):
+    to_delete = []
+
+    # Avoid concurrent modification of the queue
+    for (key, value) in retransmission_queue.iteritems():
+        if key <= ack:
+            to_delete.append(key)
+
+    for key in to_delete:
+        del retransmission_queue[key]
 
 def current_window_size():
     return INITIAL_WINDOW_SIZE - ((last_frame_sent - last_ack_received) / DATA_SIZE)
@@ -157,7 +184,7 @@ def start():
 
     # Now read in data, send packets
     while True:
-        print "Window is " + str(current_window_size())
+        log("Window is " + str(current_window_size()))
         decoded = getJSON()
         if decoded:
             handle_ack(decoded)
