@@ -24,8 +24,8 @@ UDP_PORT = 0
 dest = 0
 
 largest_acceptable_frame = 0
-last_frame_received = -1
-next_frame_expected = 0
+last_frame_received = 0
+next_frame_expected = DATA_SIZE
 
 received_packets = {}
 
@@ -83,14 +83,35 @@ def send_ack(sequence):
     result = sock.sendto(msg, dest)
     log("[sent ack] ack:" + str(sequence))
 
+def endTransmission():
+    global dest
+    global EOF_KEY
+
+    log("[send eof]")
+    sock.sendto(json.dumps({EOF_KEY: True}), dest)
+
+    # Wait for eof ACK
+    while True:
+        decoded = getJSON()
+        if decoded[EOF_KEY]:
+            # Received eof from receiver, so exit
+            log("[completed]")
+            sys.exit()
+        else:
+            break
+
+    # Failed to get ACK for the eof, so try again
+    endTransmission()
+
 
 def start():
     global next_frame_expected
     global largest_acceptable_frame
     global last_frame_received
     global SEQUENCE_KEY
+    global EOF_KEY
 
-    largest_acceptable_frame = DATA_SIZE * (INITIAL_WINDOW_SIZE - 1)
+    largest_acceptable_frame = DATA_SIZE * INITIAL_WINDOW_SIZE
 
     while True:
         log("LAF: " + str(largest_acceptable_frame))
@@ -100,21 +121,21 @@ def start():
         if SEQUENCE_KEY in decoded:
             sequence = decoded[SEQUENCE_KEY]
             data = decoded[DATA_KEY]
+            recv_sequence = sequence + len(data)
 
-            if sequence > last_frame_received and sequence <= largest_acceptable_frame:
+            if recv_sequence > last_frame_received and sequence <= largest_acceptable_frame:
                 received_packets[sequence] = decoded
 
-                if sequence > last_frame_received and sequence <= next_frame_expected and sequence <= largest_acceptable_frame:
+                if recv_sequence > last_frame_received and sequence <= next_frame_expected and sequence <= largest_acceptable_frame:
                     # The frame we are looking for (next in sequence)
                     writeOut(data)
                     incrementNFE()
                     incrementLAF()
-                    last_frame_received = sequence
-                    send_ack(sequence + len(data))
+                    last_frame_received = recv_sequence
+                    send_ack(recv_sequence)
                 else:
                     log("not acking: " + str(decoded))
-        else:
-            log("no seq key")
-            log(str(decoded))
+        elif EOF_KEY in decoded:
+            endTransmission()
 
 start()

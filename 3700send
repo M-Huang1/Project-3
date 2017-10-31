@@ -24,8 +24,6 @@ last_frame_sent = 0
 # Initial window size
 INITIAL_WINDOW_SIZE = 5
 
-current_window_size = INITIAL_WINDOW_SIZE
-
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
 UDP_IP = IP_PORT[0:IP_PORT.find(":")]
@@ -58,7 +56,6 @@ def getJSON():
         return json.loads(result[0])
 
 def send_next_packet():
-    global current_window_size
     global SEQUENCE_KEY
     global DATA_KEY
     global EOF_KEY
@@ -74,7 +71,6 @@ def send_next_packet():
         log("[send data] Sequence:" + str(last_frame_sent) + " Size:" + str(len(data)) + "")
 
         last_frame_sent += len(data)
-        current_window_size -= 1
         retransmission_queue[last_frame_sent] = (msg, current_time())
 
         return True
@@ -86,7 +82,6 @@ def send_next_packet():
 # Retransmit the packet
 def retransmit(sequence):
     global retransmission_queue
-    global current_window_size
 
     # Get the packet to be resent
     remsg = retransmission_queue[sequence][0]
@@ -104,14 +99,18 @@ def endTransmission():
     global SEQUENCE_KEY
     global EOF_KEY
 
-    sock.sendto(json.dumps({EOF_KEY: True, DATA_KEY: "", SEQUENCE_KEY: last_frame_sent}), dest)
-    log("[send eof] Sequence: " + str(last_frame_sent))
+    sock.sendto(json.dumps({EOF_KEY: True}), dest)
+    log("[send eof]")
 
     # Wait for eof ACK
     while True:
         decoded = getJSON()
         if decoded[EOF_KEY]:
-            # Received eof from receiver, so exit
+            # Received eof from receiver, so ack and then exit
+            sock.sendto(json.dumps({EOF_KEY: True}), dest)
+            sock.sendto(json.dumps({EOF_KEY: True}), dest)
+            sock.sendto(json.dumps({EOF_KEY: True}), dest)
+            log("[completed]")
             sys.exit()
         else:
             break
@@ -133,28 +132,32 @@ def retransmission_check():
 def handle_ack(decoded):
     global ACK_KEY
     global DATA_KEY
+    global last_frame_sent
+    global last_ack_received
 
     ack = decoded[ACK_KEY]
-    last_ack_received = ack
 
     log(str(decoded))
     if ack > last_ack_received and ack <= last_frame_sent:
-        log("okay")
+        last_ack_received = ack
+        del retransmission_queue[last_ack_received]
+
+def current_window_size():
+    return INITIAL_WINDOW_SIZE - ((last_frame_sent - last_ack_received) / DATA_SIZE)
 
 
 
 # Main
 def start():
-    global current_window_size
 
     # Begin by sending as many packets as the window allows
-    while current_window_size > 0:
+    while current_window_size() > 0:
         if not send_next_packet():
             break
 
     # Now read in data, send packets
     while True:
-        print "Window is " + str(current_window_size)
+        print "Window is " + str(current_window_size())
         decoded = getJSON()
         if decoded:
             handle_ack(decoded)
@@ -162,6 +165,9 @@ def start():
         # Iterate over the retransmission queue, checking for
         # packets that need retransmission
         retransmission_check()
+
+        if current_window_size() > 0:
+            send_next_packet()
 
 
 
