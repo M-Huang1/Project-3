@@ -15,18 +15,16 @@ DATA_SIZE = 1000
 TIMEOUT = 30
 RTO = 200
 
-#Current Sequence number to send
-current_sequence = 0
-
 # Retransmission queue
 retransmission_queue= {}
 
 last_ack_received = 0
 last_frame_sent = 0
+current_sequence = 0
 
 # Initial window size
 INITIAL_WINDOW_SIZE = 5
-# Current window size
+
 current_window_size = INITIAL_WINDOW_SIZE
 
 # Bind to localhost and an ephemeral port
@@ -66,17 +64,17 @@ def send_next_packet():
     global SEQUENCE_KEY
     global DATA_KEY
     global EOF_KEY
+    global last_frame_sent
 
     # Read DATA_SIZE bytes
     data = sys.stdin.read(DATA_SIZE)
     if len(data) > 0:
-        msg = json.dumps({SEQUENCE_KEY: SEQUENCE, DATA_KEY: data, EOF_KEY: False})
+        msg = json.dumps({SEQUENCE_KEY: current_sequence, DATA_KEY: data, EOF_KEY: False})
         if sock.sendto(msg, dest) < len(msg):
             log("[error] unable to fully send packet")
         retransmission_queue[current_sequence] = (msg, current_time())
         log("[send data] Sequence:" + str(current_sequence) + " Size:" + str(len(data)) + "")
 
-        current_sequence += len(data)
         last_frame_sent += len(data)
 
         current_window_size -= 1
@@ -107,8 +105,8 @@ def endTransmission():
     global SEQUENCE_KEY
     global EOF_KEY
 
-    sock.sendto(json.dumps({EOF_KEY: True, DATA_KEY: "", SEQUENCE_KEY: SEQUENCE}), dest)
-    log("[send eof] Sequence: " + str(SEQUENCE))
+    sock.sendto(json.dumps({EOF_KEY: True, DATA_KEY: "", SEQUENCE_KEY: current_sequence}), dest)
+    log("[send eof] Sequence: " + str(current_sequence))
 
     # Wait for eof ACK
     while True:
@@ -140,6 +138,9 @@ def handle_ack(decoded):
     ack = decoded[ACK_KEY]
     last_ack_received = ack
 
+    if ack > last_ack_received and ack <= last_frame_sent:
+        log("asdlfkjsad;lfajs")
+
 
 
 
@@ -147,6 +148,7 @@ def handle_ack(decoded):
 def start():
     # Begin by sending as many packets as the window allows
     while current_window_size > 0:
+        log("sdkfhaskdlf")
         send_next_packet()
 
     # Now read in data, send packets
@@ -164,4 +166,3 @@ def start():
 
 
 start()
-

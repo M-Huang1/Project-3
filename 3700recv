@@ -29,7 +29,7 @@ largest_acceptable_frame = 0
 last_frame_received = 0
 next_frame_expected = 0
 
-out_of_order_packets = {}
+received_packets = {}
 
 # Keys
 SEQUENCE_KEY = "sequence"
@@ -39,23 +39,19 @@ ACK_KEY = "ack"
 
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(dest)
+sock.bind((UDP_IP, UDP_PORT))
 sock.settimeout(TIMEOUT)
+
+def log(string):
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
 # Get port we bound to
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
-def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
-
-def writeOut():
-  global SEQUENCE
-  global RECIEVEDMESSAGES
-  while SEQUENCE in RECIEVEDMESSAGES:
-    sys.stdout.write(RECIEVEDMESSAGES[SEQUENCE])
-    SEQUENCE += len(RECIEVEDMESSAGES[SEQUENCE])
+def writeOut(data):
+    sys.stdout.write(data)
 
 # Return deserialized data from the socket
 def getJSON():
@@ -65,10 +61,10 @@ def getJSON():
     return json.loads(result[0])
 
 
-def wrapseq():
-  global SEQUENCE
-  SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
-  SEQUENCE = int(SEQUENCE)
+#def wrapseq():
+#  global SEQUENCE
+#  SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
+#  SEQUENCE = int(SEQUENCE)
 
 
 def start():
@@ -79,6 +75,10 @@ def start():
         sequence = decoded[SEQUENCE_KEY]
 
         if sequence > last_frame_received and sequence <= largest_acceptable_frame:
+            received_packets[sequence] = decoded
+
+            if sequence is last_frame_received + DATA_SIZE:
+                writeOut(decoded[DATA_KEY])
 
 
 start()
