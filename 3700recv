@@ -11,12 +11,12 @@ import select
 import json
 import math
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
+MSG_SIZE = 2500
+DATA_SIZE = 2000
 TIMEOUT = 30
 EOF_TIMEOUT = 1200
 
-INITIAL_WINDOW_SIZE = 5
+INITIAL_WINDOW_SIZE = 25
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -137,7 +137,7 @@ def accept_frame(decoded):
     global DATA_KEY
     global SEQUENCE_KEY
     global last_frame_received
-    
+
     sequence = decoded[SEQUENCE_KEY]
     data = decoded[DATA_KEY]
 

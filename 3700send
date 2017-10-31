@@ -10,10 +10,12 @@ import datetime
 import select
 import json
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
+MSG_SIZE = 2500
+DATA_SIZE = 2000
 TIMEOUT = 30
-RTO = 600
+
+#RTO = 1000
+RTO = 100
 
 
 # Retransmission queue
@@ -23,7 +25,8 @@ last_ack_received = 0
 last_frame_sent = 0
 
 # Initial window size
-INITIAL_WINDOW_SIZE = 5
+#INITIAL_WINDOW_SIZE = 5
+INITIAL_WINDOW_SIZE = 25
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -141,7 +144,7 @@ def retransmission_check():
 
     # Retransmit the lowest entries first
     for (key, value) in sorted(retransmission_queue.iteritems()):
-        if value[1] < current_time() - RTO:
+        if value >= last_ack_received and value[1] < current_time() - RTO:
             retransmit(key)
 
 def handle_ack(decoded):
@@ -149,9 +152,11 @@ def handle_ack(decoded):
     global DATA_KEY
     global last_frame_sent
     global last_ack_received
+    global RTO
 
     ack = decoded[ACK_KEY]
     log("[recv ack] " + str(ack))
+
     if ack > last_ack_received and ack <= last_frame_sent:
         last_ack_received = ack
 
