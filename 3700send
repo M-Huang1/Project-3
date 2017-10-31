@@ -14,19 +14,27 @@ MSG_SIZE = 2500
 DATA_SIZE = 2000
 TIMEOUT = 30
 
-#RTO = 1000
-RTO = 100
-
+#RTT = 1000
+RTT = 100
+RTT_ALPHA = .8
 
 # Retransmission queue
 retransmission_queue= {}
 
+# Retransmission counts for sequence numbers
+retransmission_counts = {}
+
 last_ack_received = 0
 last_frame_sent = 0
 
-# Initial window size
-#INITIAL_WINDOW_SIZE = 5
-INITIAL_WINDOW_SIZE = 25
+# Receiver window size
+RWS = 100
+
+# Default window size
+default_window = 1
+
+# Congestion window size
+congestion_window = 10
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -91,16 +99,35 @@ def send_next_packet():
 # Retransmit the packet
 def retransmit(sequence):
     global retransmission_queue
+    global retransmission_counts
+    global congestion_window
+    global default_window
+    global RTT
+
+    # Increase retransmission count for sequence
+    if sequence not in retransmission_counts:
+        retransmission_counts[sequence] = 1
+    else:
+        retransmission_counts[sequence] += 1
+
+    # A packet was lost, so reset cwnd
+    congestion_window = default_window
 
     # Get the packet to be resent
     remsg = retransmission_queue[sequence][0]
 
-    log("[resent data] " + str(sequence - DATA_SIZE))
-    if sock.sendto(remsg, dest) < len(remsg):
-        log ("[error] unable to fully resend packet")
-    else:
-        # Restart retransmission timer
-        restartTimer(sequence)
+    log("[resent data] " + str(sequence))
+    if retransmission_counts[sequence] < 2:
+        if sock.sendto(remsg, dest) < len(remsg):
+            log ("[error] unable to fully resend packet")
+        else:
+            # Restart retransmission timer
+            restartTimer(sequence)
+
+    if retransmission_counts[sequence] > 1:
+        # Multiply RTT by 2 since we've already resent it
+        RTT *= 2
+        log("[NEW RTT] : " + str(RTT))
 
 def restartTimer(sequence):
     global retransmission_queue
@@ -140,22 +167,51 @@ def endTransmission():
 # packets that need retransmission
 def retransmission_check():
     global retransmission_queue
-    global RTO
+    global RTT
+    global last_ack_received
 
     # Retransmit the lowest entries first
     for (key, value) in sorted(retransmission_queue.iteritems()):
-        if value >= last_ack_received and value[1] < current_time() - RTO:
+        if key >= last_ack_received and value[1] < current_time() - (2 * RTT):
             retransmit(key)
+
+def update_rtt(sequence):
+    global RTT
+    global RTT_ALPHA
+    global retransmission_counts
+    global retransmission_queue
+
+    if sequence not in retransmission_counts and sequence in retransmission_queue:
+        curr = current_time()
+        prev = retransmission_queue[sequence][1]
+        sample = curr - prev
+
+        new_rtt = (RTT_ALPHA * RTT) + (1 - RTT_ALPHA) * sample
+
+        RTT = new_rtt
+        log("[NEW RTT] : " + str(RTT))
+
+def increase_cwnd():
+    global RWS
+    global congestion_window
+
+    congestion_window = min(RWS, congestion_window + 1)
+    log("[NEW CWND] : " + str(congestion_window))
+
 
 def handle_ack(decoded):
     global ACK_KEY
     global DATA_KEY
     global last_frame_sent
     global last_ack_received
-    global RTO
+    global RTT
 
     ack = decoded[ACK_KEY]
     log("[recv ack] " + str(ack))
+
+    # Congestion control
+    update_rtt(ack)
+    increase_cwnd()
 
     if ack > last_ack_received and ack <= last_frame_sent:
         last_ack_received = ack
@@ -164,6 +220,8 @@ def handle_ack(decoded):
         cumulative_ack(last_ack_received)
 
 def cumulative_ack(ack):
+    global retransmission_queue
+
     to_delete = []
 
     # Avoid concurrent modification of the queue
@@ -175,7 +233,12 @@ def cumulative_ack(ack):
         del retransmission_queue[key]
 
 def current_window_size():
-    return INITIAL_WINDOW_SIZE - ((last_frame_sent - last_ack_received) / DATA_SIZE)
+    global congestion_window
+    global last_ack_received
+    global last_frame_sent
+    global DATA_SIZE
+
+    return max(1, congestion_window - ((last_frame_sent - last_ack_received) / DATA_SIZE))
 
 
 
@@ -183,7 +246,7 @@ def current_window_size():
 def start():
 
     # Begin by sending as many packets as the window allows
-    while current_window_size() > 0:
+    while current_window_size() > 1:
         if not send_next_packet():
             break
 

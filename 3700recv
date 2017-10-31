@@ -14,9 +14,9 @@ import math
 MSG_SIZE = 2500
 DATA_SIZE = 2000
 TIMEOUT = 30
-EOF_TIMEOUT = 1200
+EOF_TIMEOUT = 3000
 
-INITIAL_WINDOW_SIZE = 25
+INITIAL_WINDOW_SIZE = 100
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -60,9 +60,8 @@ def getJSON():
   global MSG_SIZE
   global dest
 
-  result = sock.recvfrom(MSG_SIZE)
+  result = safeRecv()
   if result:
-    dest = result[1]
     return json.loads(result[0])
 
 # Read data from socket, non blocking
@@ -71,9 +70,21 @@ def getJSON_non_blocking():
 
     read, ignore, ignore = select.select([sock], [], [], 0.1)
     for s in read:
-        result = s.recvfrom(MSG_SIZE)
+        result = safeRecv()
         if result:
             return json.loads(result[0])
+
+def safeRecv():
+    global MSG_SIZE
+    global sock
+    global dest
+
+    try:
+        result = sock.recvfrom(MSG_SIZE)
+        dest = result[1]
+        return result
+    except Exception as e:
+        return None
 
 #def wrapseq():
 #  global SEQUENCE
@@ -178,8 +189,8 @@ def start():
         log("LAF: " + str(largest_acceptable_frame))
         log("LFR: " + str(last_frame_received))
         log("NFE: " + str(next_frame_expected))
-        decoded = getJSON()
-        if SEQUENCE_KEY in decoded:
+        decoded = getJSON_non_blocking()
+        if decoded and SEQUENCE_KEY in decoded:
             sequence = decoded[SEQUENCE_KEY]
             data = decoded[DATA_KEY]
             recv_sequence = sequence + len(data)
@@ -200,7 +211,7 @@ def start():
             else:
                 log("not acking sequence: " + str(sequence))
 
-        elif EOF_KEY in decoded:
+        elif decoded and EOF_KEY in decoded:
             log("[recv eof]")
             endTransmission()
 
