@@ -238,7 +238,7 @@ def current_window_size():
     global last_frame_sent
     global DATA_SIZE
 
-    return max(1, congestion_window - ((last_frame_sent - last_ack_received) / DATA_SIZE))
+    return max(0, congestion_window - ((last_frame_sent - last_ack_received) / DATA_SIZE))
 
 
 
@@ -246,7 +246,7 @@ def current_window_size():
 def start():
 
     # Begin by sending as many packets as the window allows
-    while current_window_size() > 1:
+    while current_window_size() > 0:
         if not send_next_packet():
             break
 
