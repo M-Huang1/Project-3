@@ -13,20 +13,18 @@ import math
 import Queue
 
 MSG_SIZE = 1500
+DATA_SIZE = 1000
 TIMEOUT = 30
-SEQUENCE = 0
-WINDOW = 3
-MESSAGEQUE = Queue.Queue()
-DUPACKS = False
-SACKS = []
-RECIEVEDMESSAGES = {}
+
+INITIAL_WINDOW_SIZE = 5
+
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
-dest = (UDP_IP, UDP_PORT)
+dest = 0
 
 largest_acceptable_frame = 0
-last_frame_received = 0
+last_frame_received = -1
 next_frame_expected = 0
 
 received_packets = {}
@@ -56,8 +54,11 @@ def writeOut(data):
 # Return deserialized data from the socket
 def getJSON():
   global MSG_SIZE
+  global dest
+
   result = sock.recvfrom(MSG_SIZE)
   if result:
+    dest = result[1]
     return json.loads(result[0])
 
 
@@ -66,19 +67,54 @@ def getJSON():
 #  SEQUENCE = SEQUENCE%(math.pow(2,32) - 1)
 #  SEQUENCE = int(SEQUENCE)
 
+def incrementNFE():
+    global next_frame_expected
+    next_frame_expected += DATA_SIZE
+
+def incrementLAF():
+    global largest_acceptable_frame
+    largest_acceptable_frame += DATA_SIZE
+
+def send_ack(sequence):
+    global dest
+    global ACK_KEY
+
+    msg = json.dumps({ACK_KEY: sequence})
+    result = sock.sendto(msg, dest)
+    log("[sent ack] ack:" + str(sequence))
+
 
 def start():
+    global next_frame_expected
+    global largest_acceptable_frame
+    global last_frame_received
+    global SEQUENCE_KEY
+
+    largest_acceptable_frame = DATA_SIZE * (INITIAL_WINDOW_SIZE - 1)
+
     while True:
-        log("Current Recv Sequence is: " + str(largest_acceptable_frame))
+        log("LAF: " + str(largest_acceptable_frame))
+        log("LFR: " + str(last_frame_received))
+        log("NFE: " + str(next_frame_expected))
         decoded = getJSON()
+        if SEQUENCE_KEY in decoded:
+            sequence = decoded[SEQUENCE_KEY]
+            data = decoded[DATA_KEY]
 
-        sequence = decoded[SEQUENCE_KEY]
+            if sequence > last_frame_received and sequence <= largest_acceptable_frame:
+                received_packets[sequence] = decoded
 
-        if sequence > last_frame_received and sequence <= largest_acceptable_frame:
-            received_packets[sequence] = decoded
-
-            if sequence is last_frame_received + DATA_SIZE:
-                writeOut(decoded[DATA_KEY])
-
+                if sequence > last_frame_received and sequence <= next_frame_expected and sequence <= largest_acceptable_frame:
+                    # The frame we are looking for (next in sequence)
+                    writeOut(data)
+                    incrementNFE()
+                    incrementLAF()
+                    last_frame_received = sequence
+                    send_ack(sequence + len(data))
+                else:
+                    log("not acking: " + str(decoded))
+        else:
+            log("no seq key")
+            log(str(decoded))
 
 start()

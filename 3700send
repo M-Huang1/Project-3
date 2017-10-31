@@ -20,7 +20,6 @@ retransmission_queue= {}
 
 last_ack_received = 0
 last_frame_sent = 0
-current_sequence = 0
 
 # Initial window size
 INITIAL_WINDOW_SIZE = 5
@@ -59,7 +58,6 @@ def getJSON():
         return json.loads(result[0])
 
 def send_next_packet():
-    global current_sequence
     global current_window_size
     global SEQUENCE_KEY
     global DATA_KEY
@@ -69,19 +67,21 @@ def send_next_packet():
     # Read DATA_SIZE bytes
     data = sys.stdin.read(DATA_SIZE)
     if len(data) > 0:
-        msg = json.dumps({SEQUENCE_KEY: current_sequence, DATA_KEY: data, EOF_KEY: False})
+        msg = json.dumps({SEQUENCE_KEY: last_frame_sent, DATA_KEY: data, EOF_KEY: False})
         if sock.sendto(msg, dest) < len(msg):
             log("[error] unable to fully send packet")
-        retransmission_queue[current_sequence] = (msg, current_time())
-        log("[send data] Sequence:" + str(current_sequence) + " Size:" + str(len(data)) + "")
+
+        log("[send data] Sequence:" + str(last_frame_sent) + " Size:" + str(len(data)) + "")
 
         last_frame_sent += len(data)
-
         current_window_size -= 1
+        retransmission_queue[last_frame_sent] = (msg, current_time())
 
         return True
     else:
-        endTransmission()
+        # Only end transmission if there are no packets to be retransmitted
+        if len(retransmission_queue) is 0:
+            endTransmission()
 
 # Retransmit the packet
 def retransmit(sequence):
@@ -100,13 +100,12 @@ def retransmit(sequence):
 
 
 def endTransmission():
-    global current_sequence
     global DATA_KEY
     global SEQUENCE_KEY
     global EOF_KEY
 
-    sock.sendto(json.dumps({EOF_KEY: True, DATA_KEY: "", SEQUENCE_KEY: current_sequence}), dest)
-    log("[send eof] Sequence: " + str(current_sequence))
+    sock.sendto(json.dumps({EOF_KEY: True, DATA_KEY: "", SEQUENCE_KEY: last_frame_sent}), dest)
+    log("[send eof] Sequence: " + str(last_frame_sent))
 
     # Wait for eof ACK
     while True:
@@ -128,7 +127,7 @@ def retransmission_check():
     global RTO
 
     for (key, value) in enumerate(retransmission_queue.iteritems()):
-        if entry[1] < current_time() - RTO:
+        if value[1] < current_time() - RTO:
             retransmit(key)
 
 def handle_ack(decoded):
@@ -138,22 +137,24 @@ def handle_ack(decoded):
     ack = decoded[ACK_KEY]
     last_ack_received = ack
 
+    log(str(decoded))
     if ack > last_ack_received and ack <= last_frame_sent:
-        log("asdlfkjsad;lfajs")
-
+        log("okay")
 
 
 
 # Main
 def start():
+    global current_window_size
+
     # Begin by sending as many packets as the window allows
     while current_window_size > 0:
-        log("sdkfhaskdlf")
-        send_next_packet()
+        if not send_next_packet():
+            break
 
     # Now read in data, send packets
     while True:
-        print "Window is " + str(WINDOW)
+        print "Window is " + str(current_window_size)
         decoded = getJSON()
         if decoded:
             handle_ack(decoded)
