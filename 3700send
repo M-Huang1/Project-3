@@ -10,14 +10,13 @@ import datetime
 import select
 import json
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
+MSG_SIZE = 2500
+DATA_SIZE = 2000
 TIMEOUT = 30
 
 #RTT = 1000
 RTT = 100
 RTT_ALPHA = .8
-MAX_RTT = 2000
 
 # Retransmission queue
 retransmission_queue= {}
@@ -32,7 +31,7 @@ last_frame_sent = 0
 RWS = 100
 
 # Default window size
-default_window = 5
+default_window = 1
 
 # Congestion window size
 congestion_window = 10
@@ -96,8 +95,6 @@ def send_next_packet():
         # Only end transmission if there are no packets to be retransmitted
         if len(retransmission_queue) is 0:
             endTransmission()
-        else:
-            log(str(retransmission_queue))
 
 # Retransmit the packet
 def retransmit(sequence):
@@ -107,7 +104,6 @@ def retransmit(sequence):
     global default_window
     global RTT
     global sock
-    global MAX_RTT
 
     # Increase retransmission count for sequence
     if sequence not in retransmission_counts:
@@ -118,22 +114,19 @@ def retransmit(sequence):
     # A packet was lost, so reset cwnd
     congestion_window = default_window
 
-    if retransmission_queue[sequence] < 3:
-        # Get the packet to be resent
-        remsg = retransmission_queue[sequence][0]
-        log("[resent] " + str(sequence))
-        if sock.sendto(remsg, dest) < len(remsg):
-            log ("[error] unable to fully resend packet")
-        else:
-            # Restart retransmission timer
-            restartTimer(sequence)
+    # Get the packet to be resent
+    remsg = retransmission_queue[sequence][0]
+
+    if sock.sendto(remsg, dest) < len(remsg):
+        log ("[error] unable to fully resend packet")
+    else:
+        # Restart retransmission timer
+        restartTimer(sequence)
 
     if retransmission_counts[sequence] > 1:
-        # Multiply RTT by 1.2 since we've already resent it
-        RTT *= 1.2
-        RTT = min(RTT, MAX_RTT)
+        # Multiply RTT by 2 since we've already resent it
+        RTT *= 2
         log("[NEW RTT] : " + str(RTT))
-
 
 def restartTimer(sequence):
     global retransmission_queue
