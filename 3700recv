@@ -11,10 +11,10 @@ import select
 import json
 import math
 
-MSG_SIZE = 2500
-DATA_SIZE = 2000
+MSG_SIZE = 1500
+DATA_SIZE = 1000
 TIMEOUT = 30
-EOF_TIMEOUT = 3000
+EOF_TIMEOUT = 1000
 
 INITIAL_WINDOW_SIZE = 100
 
@@ -51,6 +51,18 @@ def log(string):
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
+def safeRecv():
+    global MSG_SIZE
+    global sock
+    global dest
+
+    try:
+        result = sock.recvfrom(MSG_SIZE)
+        dest = result[1]
+        return result
+    except Exception as e:
+        return None
+
 
 def writeOut(data):
     sys.stdout.write(data)
@@ -75,19 +87,6 @@ def getJSON_non_blocking():
         result = safeRecv()
         if result:
             return json.loads(result[0])
-
-def safeRecv():
-    global MSG_SIZE
-    global sock
-    global dest
-
-    try:
-        result = sock.recvfrom(MSG_SIZE)
-        dest = result[1]
-        return result
-    except Exception as e:
-        log("EXC: " + str(e))
-        return None
 
 #def wrapseq():
 #  global SEQUENCE
@@ -192,10 +191,7 @@ def start():
     largest_acceptable_frame = DATA_SIZE * INITIAL_WINDOW_SIZE
 
     while True:
-        log("LAF: " + str(largest_acceptable_frame))
-        log("LFR: " + str(last_frame_received))
-        log("NFE: " + str(next_frame_expected))
-        decoded = getJSON_non_blocking()
+        decoded = getJSON()
         if decoded and SEQUENCE_KEY in decoded:
             sequence = decoded[SEQUENCE_KEY]
             data = decoded[DATA_KEY]
@@ -203,7 +199,6 @@ def start():
 
             if sequence > last_frame_received and sequence <= next_frame_expected and sequence <= largest_acceptable_frame:
                 # The frame we are looking for (next in sequence)
-                log("sequence: " + str(sequence) + " lfr: " + str(last_frame_received))
                 log("[recv data] " + str(sequence) + " (" + str(len(data)) + ") " + "ACCEPTED (in-order)")
                 last_frame_received = sequence
                 to_ack = accept_frame(decoded)
@@ -215,7 +210,7 @@ def start():
                 # Still within window, but out of order
                 accept_frame(decoded)
             else:
-                log("not acking sequence: " + str(sequence))
+                log("[recv data] " + str(sequence) + " (" + str(len(data)) + ") " + "IGNORED")
 
         elif decoded and EOF_KEY in decoded:
             log("[recv eof]")
