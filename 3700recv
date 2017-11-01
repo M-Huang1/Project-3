@@ -67,8 +67,10 @@ def getJSON():
 # Read data from socket, non blocking
 def getJSON_non_blocking():
     global MSG_SIZE
+    global sock
 
-    read, ignore, ignore = select.select([sock], [], [], 0.1)
+    sock.setblocking(0)
+    read, ignore, exp = select.select([sock], [], [sock], .1)
     for s in read:
         result = safeRecv()
         if result:
@@ -84,6 +86,7 @@ def safeRecv():
         dest = result[1]
         return result
     except Exception as e:
+        log("EXC: " + str(e))
         return None
 
 #def wrapseq():
@@ -175,6 +178,9 @@ def accept_frame(decoded):
     for key in to_delete:
         del received_packets[key]
 
+    # We return LFR so we can ACK the highest packet we have written out
+    return last_frame_received
+
 
 def start():
     global next_frame_expected
@@ -200,8 +206,8 @@ def start():
                 log("sequence: " + str(sequence) + " lfr: " + str(last_frame_received))
                 log("[recv data] " + str(sequence) + " (" + str(len(data)) + ") " + "ACCEPTED (in-order)")
                 last_frame_received = sequence
-                accept_frame(decoded)
-                send_ack(recv_sequence)
+                to_ack = accept_frame(decoded)
+                send_ack(to_ack)
             elif sequence == last_frame_received:
                 # Re-ack if we got the same frame (our ack may have been lost)
                 send_ack(recv_sequence)

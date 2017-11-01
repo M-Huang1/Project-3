@@ -103,6 +103,7 @@ def retransmit(sequence):
     global congestion_window
     global default_window
     global RTT
+    global sock
 
     # Increase retransmission count for sequence
     if sequence not in retransmission_counts:
@@ -116,13 +117,11 @@ def retransmit(sequence):
     # Get the packet to be resent
     remsg = retransmission_queue[sequence][0]
 
-    log("[resent data] " + str(sequence))
-    if retransmission_counts[sequence] < 2:
-        if sock.sendto(remsg, dest) < len(remsg):
-            log ("[error] unable to fully resend packet")
-        else:
-            # Restart retransmission timer
-            restartTimer(sequence)
+    if sock.sendto(remsg, dest) < len(remsg):
+        log ("[error] unable to fully resend packet")
+    else:
+        # Restart retransmission timer
+        restartTimer(sequence)
 
     if retransmission_counts[sequence] > 1:
         # Multiply RTT by 2 since we've already resent it
